@@ -67,7 +67,6 @@
 //		"glob" pattern and N is a V level. For instance,
 //			-vmodule=gopher*=3
 //		sets the V level to 3 in all Go files whose names begin "gopher".
-//
 package klog
 
 import (
@@ -402,6 +401,8 @@ type flushSyncWriter interface {
 	io.Writer
 }
 
+var commandLine flag.FlagSet
+
 // init sets up the defaults and runs flushDaemon.
 func init() {
 	logging.stderrThreshold = errorLog // Default stderrThreshold is ERROR.
@@ -416,6 +417,23 @@ func init() {
 	logging.skipLogHeaders = false
 	logging.oneOutput = false
 	go logging.flushDaemon()
+
+	commandLine.StringVar(&logging.logDir, "log_dir", logging.logDir, "If non-empty, write log files in this directory")
+	commandLine.StringVar(&logging.logFile, "log_file", logging.logFile, "If non-empty, use this log file")
+	commandLine.Uint64Var(&logging.logFileMaxSizeMB, "log_file_max_size", logging.logFileMaxSizeMB,
+		"Defines the maximum size a log file can grow to. Unit is megabytes. "+
+			"If the value is 0, the maximum file size is unlimited.")
+	commandLine.BoolVar(&logging.toStderr, "logtostderr", logging.toStderr, "log to standard error instead of files")
+	commandLine.BoolVar(&logging.alsoToStderr, "alsologtostderr", logging.alsoToStderr, "log to standard error as well as files")
+	commandLine.Var(&logging.verbosity, "v", "number for the log level verbosity")
+	commandLine.BoolVar(&logging.addDirHeader, "add_dir_header", logging.addDirHeader, "If true, adds the file directory to the header of the log messages")
+	commandLine.BoolVar(&logging.skipHeaders, "skip_headers", logging.skipHeaders, "If true, avoid header prefixes in the log messages")
+	commandLine.BoolVar(&logging.oneOutput, "one_output", logging.oneOutput, "If true, only write logs to their native severity level (vs also writing to each lower severity level)")
+	commandLine.BoolVar(&logging.skipLogHeaders, "skip_log_headers", logging.skipLogHeaders, "If true, avoid headers when opening log files")
+	commandLine.Var(&logging.stderrThreshold, "stderrthreshold", "logs at or above this threshold go to stderr")
+	commandLine.Var(&logging.vmodule, "vmodule", "comma-separated list of pattern=N settings for file-filtered logging")
+	commandLine.Var(&logging.traceLocation, "log_backtrace_at", "when logging hits line file:N, emit a stack trace")
+
 }
 
 // InitFlags is for explicitly initializing the flags.
@@ -424,21 +442,10 @@ func InitFlags(flagset *flag.FlagSet) {
 		flagset = flag.CommandLine
 	}
 
-	flagset.StringVar(&logging.logDir, "log_dir", logging.logDir, "If non-empty, write log files in this directory")
-	flagset.StringVar(&logging.logFile, "log_file", logging.logFile, "If non-empty, use this log file")
-	flagset.Uint64Var(&logging.logFileMaxSizeMB, "log_file_max_size", logging.logFileMaxSizeMB,
-		"Defines the maximum size a log file can grow to. Unit is megabytes. "+
-			"If the value is 0, the maximum file size is unlimited.")
-	flagset.BoolVar(&logging.toStderr, "logtostderr", logging.toStderr, "log to standard error instead of files")
-	flagset.BoolVar(&logging.alsoToStderr, "alsologtostderr", logging.alsoToStderr, "log to standard error as well as files")
-	flagset.Var(&logging.verbosity, "v", "number for the log level verbosity")
-	flagset.BoolVar(&logging.addDirHeader, "add_dir_header", logging.addDirHeader, "If true, adds the file directory to the header of the log messages")
-	flagset.BoolVar(&logging.skipHeaders, "skip_headers", logging.skipHeaders, "If true, avoid header prefixes in the log messages")
-	flagset.BoolVar(&logging.oneOutput, "one_output", logging.oneOutput, "If true, only write logs to their native severity level (vs also writing to each lower severity level)")
-	flagset.BoolVar(&logging.skipLogHeaders, "skip_log_headers", logging.skipLogHeaders, "If true, avoid headers when opening log files")
-	flagset.Var(&logging.stderrThreshold, "stderrthreshold", "logs at or above this threshold go to stderr")
-	flagset.Var(&logging.vmodule, "vmodule", "comma-separated list of pattern=N settings for file-filtered logging")
-	flagset.Var(&logging.traceLocation, "log_backtrace_at", "when logging hits line file:N, emit a stack trace")
+	commandLine.VisitAll(func(f *flag.Flag) {
+		flagset.Var(f.Value, f.Name, f.Usage)
+	})
+
 }
 
 // Flush flushes all pending log I/O.
@@ -582,8 +589,11 @@ It returns a buffer containing the formatted header and the user's file and line
 The depth specifies how many stack frames above lives the source line to be identified in the log message.
 
 Log lines have this form:
+
 	Lmmdd hh:mm:ss.uuuuuu threadid file:line] msg...
+
 where the fields are defined as follows:
+
 	L                A single character, representing the log level (eg 'I' for INFO)
 	mm               The month (zero padded; ie May is '05')
 	dd               The day (zero padded)
@@ -858,8 +868,9 @@ func (rb *redirectBuffer) Write(bytes []byte) (n int, err error) {
 // All log lines include the 'severity', 'file' and 'line' values attached as
 // structured logging values.
 // Use as:
-//   ...
-//   klog.SetLogger(zapr.NewLogger(zapLog))
+//
+//	...
+//	klog.SetLogger(zapr.NewLogger(zapLog))
 func SetLogger(logr logr.Logger) {
 	logging.logr = logr
 }
@@ -1279,9 +1290,13 @@ func newVerbose(level Level, b bool) Verbose {
 // The returned value is a struct of type Verbose, which implements Info, Infoln
 // and Infof. These methods will write to the Info log if called.
 // Thus, one may write either
+//
 //	if glog.V(2).Enabled() { klog.Info("log this") }
+//
 // or
+//
 //	klog.V(2).Info("log this")
+//
 // The second form is shorter but the first is cheaper if logging is off because it does
 // not evaluate its arguments.
 //
