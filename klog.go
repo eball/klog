@@ -443,7 +443,9 @@ func InitFlags(flagset *flag.FlagSet) {
 	}
 
 	commandLine.VisitAll(func(f *flag.Flag) {
-		flagset.Var(f.Value, f.Name, f.Usage)
+		if flagset.Lookup(f.Name) == nil {
+			flagset.Var(f.Value, f.Name, f.Usage)
+		}
 	})
 
 }
